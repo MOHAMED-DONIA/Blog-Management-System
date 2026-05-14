@@ -5,7 +5,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.cache import comments_cache
-from app.core.cache_context import cache_hit_context
+from app.core.request_context import request_context
 from app.core.logger import get_logger
 from app.core.metrics import metrics
 from app.models.comment import Comment
@@ -28,7 +28,8 @@ def get_post_comments(
     cached = comments_cache.get(cache_key)
     if cached is not None:
         logger.info("Cache HIT — Serving comments for post_id=%d from memory", post_id)
-        cache_hit_context.set(True)
+        req = request_context.get()
+        if req: req.state.cache_hit = True
         cached.source = "Cache"
         return cached
 

@@ -3,7 +3,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.cache import posts_cache
-from app.core.cache_context import cache_hit_context
+from app.core.request_context import request_context
 from app.core.logger import get_logger
 from app.core.metrics import metrics
 from app.models.post import Post
@@ -28,7 +28,8 @@ def get_all_posts(db: Session, page: int = 1, size: int = 10) -> PaginatedPosts:
     cached = posts_cache.get(cache_key)
     if cached is not None:
         logger.info("Cache HIT — Serving posts list from memory")
-        cache_hit_context.set(True)
+        req = request_context.get()
+        if req: req.state.cache_hit = True
         cached.source = "Cache"  # Indicate in JSON
         return cached
 
@@ -57,8 +58,8 @@ def get_post_by_id(db: Session, post_id: int) -> Post:
     cached = posts_cache.get(cache_key)
     if cached is not None:
         logger.info("Cache HIT — Serving post id=%d from memory", post_id)
-        cache_hit_context.set(True)
-        # Note: SQLAlchemy models don't easily support extra fields unless using a wrapper or schema
+        req = request_context.get()
+        if req: req.state.cache_hit = True
         return cached
 
     logger.info("Cache MISS — Fetching post id=%d from Database", post_id)
