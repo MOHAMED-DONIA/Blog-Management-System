@@ -1,12 +1,9 @@
-"""
-Post Service — with Logging + Caching
-"""
 import math
-
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.cache import posts_cache
+from app.core.cache_context import cache_hit_context
 from app.core.logger import get_logger
 from app.core.metrics import metrics
 from app.models.post import Post
@@ -17,11 +14,11 @@ logger = get_logger("blog_api.posts")
 
 
 def _cache_key_list(page: int, size: int) -> str:
-    return f"posts:list:{page}:{size}"
+    return f"posts:list:p{page}:s{size}"
 
 
 def _cache_key_single(post_id: int) -> str:
-    return f"posts:detail:{post_id}"
+    return f"posts:item:{post_id}"
 
 
 def get_all_posts(db: Session, page: int = 1, size: int = 10) -> PaginatedPosts:
@@ -30,10 +27,13 @@ def get_all_posts(db: Session, page: int = 1, size: int = 10) -> PaginatedPosts:
     # ── Cache HIT ─────────────────────────────────────────────────────────────
     cached = posts_cache.get(cache_key)
     if cached is not None:
-        logger.debug("Cache HIT — posts list page=%d size=%d", page, size)
+        logger.info("Cache HIT — Serving posts list from memory")
+        cache_hit_context.set(True)
+        cached.source = "Cache"  # Indicate in JSON
         return cached
 
     # ── DB Query ──────────────────────────────────────────────────────────────
+    logger.info("Cache MISS — Fetching posts list from Database")
     offset = (page - 1) * size
     total = db.query(Post).count()
     posts = db.query(Post).order_by(Post.created_at.desc()).offset(offset).limit(size).all()
@@ -44,10 +44,10 @@ def get_all_posts(db: Session, page: int = 1, size: int = 10) -> PaginatedPosts:
         size=size,
         pages=math.ceil(total / size) if total else 0,
         items=[PostListResponse.model_validate(p) for p in posts],
+        source="Database"
     )
 
     posts_cache.set(cache_key, result)
-    logger.debug("Cache MISS — fetched posts list page=%d size=%d (total=%d)", page, size, total)
     return result
 
 
@@ -56,16 +56,17 @@ def get_post_by_id(db: Session, post_id: int) -> Post:
 
     cached = posts_cache.get(cache_key)
     if cached is not None:
-        logger.debug("Cache HIT — post id=%d", post_id)
+        logger.info("Cache HIT — Serving post id=%d from memory", post_id)
+        cache_hit_context.set(True)
+        # Note: SQLAlchemy models don't easily support extra fields unless using a wrapper or schema
         return cached
 
+    logger.info("Cache MISS — Fetching post id=%d from Database", post_id)
     post = db.query(Post).filter(Post.id == post_id).first()
     if not post:
-        logger.warning("Post not found: id=%d", post_id)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
 
     posts_cache.set(cache_key, post)
-    logger.debug("Cache MISS — fetched post id=%d", post_id)
     return post
 
 
@@ -75,15 +76,10 @@ def create_post(db: Session, data: PostCreate, current_user: User) -> Post:
     db.commit()
     db.refresh(post)
 
-    # Invalidate all list caches
+    # Invalidate caches
     posts_cache.invalidate_prefix("posts:list:")
-
-    logger.info(
-        "Post created | id=%d title='%s' author='%s'",
-        post.id,
-        post.title[:40],
-        current_user.username,
-    )
+    
+    logger.info("New post created | id=%d | Database updated", post.id)
     metrics.record_op("post_create")
     return post
 
@@ -95,22 +91,17 @@ def update_post(db: Session, post_id: int, data: PostUpdate, current_user: User)
 
     _assert_ownership_or_admin(post.author_id, current_user)
 
-    if data.title is not None:
-        post.title = data.title
-    if data.content is not None:
-        post.content = data.content
+    if data.title is not None: post.title = data.title
+    if data.content is not None: post.content = data.content
+    
     db.commit()
     db.refresh(post)
 
-    # Invalidate caches for this post and all list pages
+    # Invalidate caches
     posts_cache.delete(_cache_key_single(post_id))
     posts_cache.invalidate_prefix("posts:list:")
 
-    logger.info(
-        "Post updated | id=%d by='%s'",
-        post_id,
-        current_user.username,
-    )
+    logger.info("Post updated | id=%d | Cache invalidated", post_id)
     metrics.record_op("post_update")
     return post
 
@@ -120,23 +111,16 @@ def delete_post(db: Session, post_id: int, current_user: User) -> None:
     if not post:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
 
-    if current_user.role != UserRole.ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only admins can delete posts",
-        )
+    _assert_ownership_or_admin(post.author_id, current_user)
 
     db.delete(post)
     db.commit()
 
+    # Invalidate caches
     posts_cache.delete(_cache_key_single(post_id))
     posts_cache.invalidate_prefix("posts:list:")
 
-    logger.info(
-        "Post deleted | id=%d by='%s'",
-        post_id,
-        current_user.username,
-    )
+    logger.info("Post deleted | id=%d | Cache invalidated", post_id)
     metrics.record_op("post_delete")
 
 
@@ -144,5 +128,5 @@ def _assert_ownership_or_admin(author_id: int, current_user: User) -> None:
     if current_user.role != UserRole.ADMIN and current_user.id != author_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to modify this resource",
+            detail="Not enough permissions to modify this post",
         )

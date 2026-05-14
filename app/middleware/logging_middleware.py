@@ -1,89 +1,43 @@
-"""
-Logging Middleware
-Intercepts every HTTP request and response to produce structured log entries
-and record metrics (timing, status, route).
-"""
 import time
-
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
-
-from app.core.logger import get_logger
+from app.core.logger import app_logger as logger
 from app.core.metrics import metrics
-
-logger = get_logger("blog_api.http")
-
+from app.core.cache_context import cache_hit_context
 
 class LoggingMiddleware(BaseHTTPMiddleware):
-    """
-    Logs every incoming request and outgoing response.
-
-    Log format (INFO):
-        [METHOD] /path → status_code  (duration ms) [client_ip]
-
-    Errors (4xx/5xx) are logged at WARNING / ERROR level.
-    """
-
-    async def dispatch(self, request: Request, call_next) -> Response:
-        start = time.perf_counter()
-
-        # ── Pre-request ───────────────────────────────────────────────────────
-        client_ip = request.client.host if request.client else "unknown"
-        logger.debug(
-            "→ %s %s  [%s]",
-            request.method,
-            request.url.path,
-            client_ip,
-        )
-
-        # ── Process ───────────────────────────────────────────────────────────
+    async def dispatch(self, request: Request, call_next):
+        start_time = time.time()
+        
+        # Reset context for each request
+        token = cache_hit_context.set(False)
+        
         try:
             response: Response = await call_next(request)
         except Exception as exc:
-            duration_ms = (time.perf_counter() - start) * 1000
-            logger.error(
-                "✗ %s %s → EXCEPTION after %.1f ms  [%s] | %s: %s",
-                request.method,
-                request.url.path,
-                duration_ms,
-                client_ip,
-                type(exc).__name__,
-                exc,
-            )
-            metrics.record_request(
-                method=request.method,
-                path=request.url.path,
-                status_code=500,
-                duration_ms=duration_ms,
-            )
-            raise
+            duration = (time.time() - start_time) * 1000
+            metrics.record_request(request.method, request.url.path, 500, duration)
+            raise exc
+        finally:
+            duration_ms = (time.time() - start_time) * 1000
 
-        # ── Post-response ─────────────────────────────────────────────────────
-        duration_ms = (time.perf_counter() - start) * 1000
-        status = response.status_code
-
-        log_fn = logger.info
-        if status >= 500:
-            log_fn = logger.error
-        elif status >= 400:
-            log_fn = logger.warning
-
-        icon = "✓" if status < 400 else ("⚠" if status < 500 else "✗")
-        log_fn(
-            "%s %s %s → %d  (%.1f ms)  [%s]",
-            icon,
-            request.method,
-            request.url.path,
-            status,
-            duration_ms,
-            client_ip,
+        # Read cache status from context
+        is_hit = cache_hit_context.get()
+        cache_status = "HIT (Cache)" if is_hit else "MISS (Database)"
+        
+        # Add custom headers
+        response.headers["X-Cache"] = cache_status
+        response.headers["X-Response-Time-Ms"] = f"{duration_ms:.2f}ms"
+        
+        # Log the operation
+        logger.info(
+            f"{request.method} {request.url.path} - Status: {response.status_code} "
+            f"| Source: {cache_status} | Duration: {duration_ms:.2f}ms"
         )
-
-        metrics.record_request(
-            method=request.method,
-            path=request.url.path,
-            status_code=status,
-            duration_ms=duration_ms,
-        )
-
+        
+        metrics.record_request(request.method, request.url.path, response.status_code, duration_ms)
+        
+        # Cleanup context
+        cache_hit_context.reset(token)
+        
         return response

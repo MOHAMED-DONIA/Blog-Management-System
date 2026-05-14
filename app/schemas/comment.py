@@ -1,11 +1,7 @@
-from __future__ import annotations
-
 from datetime import datetime
 from typing import List, Optional
 
 from pydantic import BaseModel, field_validator
-
-from app.schemas.user import UserResponse
 
 
 class CommentCreate(BaseModel):
@@ -16,10 +12,10 @@ class CommentCreate(BaseModel):
     @classmethod
     def content_not_empty(cls, v: str) -> str:
         v = v.strip()
-        if len(v) < 1:
-            raise ValueError("Comment content cannot be empty")
-        if len(v) > 2000:
-            raise ValueError("Comment must not exceed 2000 characters")
+        if not v:
+            raise ValueError("Content cannot be empty")
+        if len(v) < 2:
+            raise ValueError("Content too short")
         return v
 
 
@@ -30,10 +26,8 @@ class CommentUpdate(BaseModel):
     @classmethod
     def content_not_empty(cls, v: str) -> str:
         v = v.strip()
-        if len(v) < 1:
-            raise ValueError("Comment content cannot be empty")
-        if len(v) > 2000:
-            raise ValueError("Comment must not exceed 2000 characters")
+        if not v:
+            raise ValueError("Content cannot be empty")
         return v
 
 
@@ -42,11 +36,9 @@ class CommentResponse(BaseModel):
     content: str
     post_id: int
     author_id: int
-    parent_id: Optional[int]
-    author: UserResponse
+    parent_id: Optional[int] = None
     created_at: datetime
-    updated_at: Optional[datetime] = None
-    replies: List[CommentResponse] = []
+    replies: List["CommentResponse"] = []
 
     model_config = {"from_attributes": True}
 
@@ -57,3 +49,4 @@ class PaginatedComments(BaseModel):
     size: int
     pages: int
     items: List[CommentResponse]
+    source: str = "Database"
