@@ -1,0 +1,31 @@
+version: "3.9"
+
+services:
+  blog_api:
+    build: .
+    container_name: blog_fastapi
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    environment:
+      - DATABASE_URL=sqlite:///./blog.db
+      - SECRET_KEY=change-me-in-production
+      - ACCESS_TOKEN_EXPIRE_MINUTES=60
+    restart: unless-stopped
+
+# To use PostgreSQL instead, uncomment below and update DATABASE_URL:
+# db:
+#   image: postgres:15-alpine
+#   container_name: blog_postgres
+#   environment:
+#     POSTGRES_USER: bloguser
+#     POSTGRES_PASSWORD: blogpass
+#     POSTGRES_DB: blogdb
+#   ports:
+#     - "5432:5432"
+#   volumes:
+#     - postgres_data:/var/lib/postgresql/data
+#
+# volumes:
+#   postgres_data:

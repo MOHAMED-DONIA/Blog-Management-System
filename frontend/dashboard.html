@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Blog API — Monitoring Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    /* ── Reset & Variables ─────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0d1117;
+      --surface:  #161b22;
+      --surface2: #1c2128;
+      --border:   #30363d;
+      --text:     #e6edf3;
+      --muted:    #8b949e;
+      --accent:   #58a6ff;
+      --green:    #3fb950;
+      --yellow:   #d29922;
+      --red:      #f85149;
+      --purple:   #bc8cff;
+      --cyan:     #39d5c2;
+      --radius:   12px;
+      --shadow:   0 4px 24px rgba(0,0,0,.4);
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 0;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────────────── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 36px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(8px);
+    }
+    .header-left { display: flex; align-items: center; gap: 14px; }
+    .logo {
+      width: 38px; height: 38px;
+      background: linear-gradient(135deg, var(--accent), var(--purple));
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px;
+    }
+    header h1 { font-size: 18px; font-weight: 600; }
+    header h1 span { color: var(--muted); font-weight: 400; font-size: 14px; margin-left: 8px; }
+    .status-badge {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 14px;
+      background: rgba(63, 185, 80, .12);
+      border: 1px solid rgba(63, 185, 80, .3);
+      border-radius: 20px;
+      font-size: 13px;
+      color: var(--green);
+      font-weight: 500;
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green);
+           box-shadow: 0 0 6px var(--green); animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1}50%{opacity:.4} }
+
+    /* ── Layout ─────────────────────────────────────────────────────────── */
+    main { max-width: 1400px; margin: 0 auto; padding: 36px; }
+
+    .section-title {
+      font-size: 13px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: .08em; color: var(--muted);
+      margin-bottom: 16px; padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* ── Cards ───────────────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 24px;
+      transition: border-color .2s, transform .2s;
+    }
+    .card:hover { border-color: var(--accent); transform: translateY(-2px); }
+
+    /* ── KPI Row ─────────────────────────────────────────────────────────── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+    .kpi-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+      display: flex; flex-direction: column; gap: 6px;
+      transition: all .2s;
+    }
+    .kpi-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+    .kpi-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing:.06em; }
+    .kpi-value { font-size: 32px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+    .kpi-sub   { font-size: 12px; color: var(--muted); }
+    .kpi-green .kpi-value  { color: var(--green); }
+    .kpi-red   .kpi-value  { color: var(--red); }
+    .kpi-blue  .kpi-value  { color: var(--accent); }
+    .kpi-yellow.kpi-value  { color: var(--yellow); }
+    .kpi-purple .kpi-value { color: var(--purple); }
+
+    /* ── Two-column grid ─────────────────────────────────────────────────── */
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 32px; }
+    @media(max-width:900px){ .two-col { grid-template-columns: 1fr; } }
+
+    /* ── Tables ──────────────────────────────────────────────────────────── */
+    .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .data-table th {
+      text-align: left; padding: 10px 14px;
+      color: var(--muted); font-weight: 600;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+    }
+    .data-table td { padding: 10px 14px; border-bottom: 1px solid rgba(48,54,61,.5); }
+    .data-table tr:last-child td { border-bottom: none; }
+    .data-table tr:hover td { background: var(--surface2); }
+
+    /* ── Status badges ───────────────────────────────────────────────────── */
+    .badge {
+      display: inline-block; padding: 2px 10px;
+      border-radius: 20px; font-size: 11px; font-weight: 600;
+    }
+    .badge-green  { background: rgba(63,185,80,.15);  color: var(--green); }
+    .badge-red    { background: rgba(248,81,73,.15);  color: var(--red); }
+    .badge-blue   { background: rgba(88,166,255,.15); color: var(--accent); }
+    .badge-yellow { background: rgba(210,153,34,.15); color: var(--yellow); }
+    .badge-muted  { background: rgba(139,148,158,.1); color: var(--muted); }
+
+    /* ── Mini bars ───────────────────────────────────────────────────────── */
+    .bar-wrap { display: flex; align-items: center; gap: 10px; }
+    .bar-bg { flex: 1; height: 6px; background: var(--border); border-radius: 99px; overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--accent), var(--purple)); transition: width .4s; }
+    .bar-count { font-size: 12px; color: var(--muted); min-width: 30px; text-align: right; }
+
+    /* ── Ops Grid ─────────────────────────────────────────────────────────── */
+    .ops-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+    .op-card {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 10px; padding: 16px;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .op-name { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing:.05em; }
+    .op-val  { font-size: 26px; font-weight: 700; color: var(--cyan); font-family: 'JetBrains Mono', monospace; }
+
+    /* ── Recent requests log ─────────────────────────────────────────────── */
+    .log-list { display: flex; flex-direction: column; gap: 6px; max-height: 400px; overflow-y: auto; }
+    .log-item {
+      display: grid;
+      grid-template-columns: 56px 40px 1fr auto auto;
+      align-items: center; gap: 10px;
+      padding: 8px 12px;
+      background: var(--surface2);
+      border-radius: 8px;
+      font-size: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      border-left: 3px solid transparent;
+    }
+    .log-item.ok  { border-left-color: var(--green); }
+    .log-item.warn { border-left-color: var(--yellow); }
+    .log-item.err  { border-left-color: var(--red); }
+    .log-method { font-weight: 600; color: var(--accent); }
+    .log-path   { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .log-dur    { color: var(--muted); }
+    .log-ts     { color: var(--muted); font-size: 11px; }
+
+    /* ── Cache cards ─────────────────────────────────────────────────────── */
+    .cache-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media(max-width:600px){ .cache-grid { grid-template-columns: 1fr; } }
+    .cache-card {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 10px; padding: 20px;
+    }
+    .cache-name { font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--purple); }
+    .cache-stat-row { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 13px; }
+    .cache-stat-row span:first-child { color: var(--muted); }
+
+    /* ── Refresh bar ─────────────────────────────────────────────────────── */
+    .refresh-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 28px;
+    }
+    .refresh-btn {
+      display: flex; align-items: center; gap: 8px;
+      padding: 9px 20px;
+      background: linear-gradient(135deg, var(--accent), var(--purple));
+      border: none; border-radius: 8px;
+      color: #fff; font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: opacity .2s;
+    }
+    .refresh-btn:hover { opacity: .85; }
+    .last-updated { font-size: 12px; color: var(--muted); }
+
+    /* ── Scrollbar ───────────────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--surface); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <div class="logo">📊</div>
+    <h1>Blog API Monitoring <span>Admin Dashboard</span></h1>
+  </div>
+  <div class="status-badge"><div class="dot"></div> API Online</div>
+</header>
+
+<main>
+  <!-- Refresh bar -->
+  <div class="refresh-bar">
+    <span class="last-updated" id="last-updated">Loading…</span>
+    <button class="refresh-btn" onclick="loadMetrics()">⟳ Refresh</button>
+  </div>
+
+  <!-- KPI Row -->
+  <p class="section-title">Overview</p>
+  <div class="kpi-grid" id="kpi-grid"></div>
+
+  <!-- Two columns -->
+  <div class="two-col">
+    <!-- Status codes -->
+    <div class="card">
+      <p class="section-title">Requests by Status</p>
+      <div id="status-chart"></div>
+    </div>
+
+    <!-- HTTP Methods -->
+    <div class="card">
+      <p class="section-title">Requests by Method</p>
+      <div id="method-chart"></div>
+    </div>
+  </div>
+
+  <!-- Top Routes + Operations -->
+  <div class="two-col">
+    <div class="card">
+      <p class="section-title">Top Routes</p>
+      <table class="data-table" id="routes-table">
+        <thead><tr><th>Path</th><th>Hits</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <p class="section-title">Business Operations</p>
+      <div class="ops-grid" id="ops-grid"></div>
+    </div>
+  </div>
+
+  <!-- Cache Stats -->
+  <p class="section-title" style="margin-bottom:16px">Cache Status</p>
+  <div class="cache-grid" id="cache-grid" style="margin-bottom:32px"></div>
+
+  <!-- Recent Requests Log -->
+  <div class="card">
+    <p class="section-title">Recent Requests (last 100)</p>
+    <div class="log-list" id="log-list"></div>
+  </div>
+</main>
+
+<script>
+  // ── Data injected by server ────────────────────────────────────────────────
+  const SERVER_METRICS = __METRICS_DATA__;
+  const SERVER_CACHE   = __CACHE_DATA__;
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  function statusBadge(code) {
+    const s = parseInt(code);
+    if (s < 300) return `<span class="badge badge-green">${code}</span>`;
+    if (s < 400) return `<span class="badge badge-blue">${code}</span>`;
+    if (s < 500) return `<span class="badge badge-yellow">${code}</span>`;
+    return `<span class="badge badge-red">${code}</span>`;
+  }
+
+  function methodBadge(m) {
+    const colors = { GET:'badge-blue', POST:'badge-green', PUT:'badge-yellow', DELETE:'badge-red', PATCH:'badge-muted' };
+    return `<span class="badge ${colors[m]||'badge-muted'}">${m}</span>`;
+  }
+
+  function maxVal(obj) {
+    return Math.max(1, ...Object.values(obj).map(Number));
+  }
+
+  function barChart(obj, colorClass) {
+    const mx = maxVal(obj);
+    return Object.entries(obj).sort((a,b)=>b[1]-a[1]).map(([k,v]) => `
+      <div style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px">
+          <span>${k}</span><span style="color:var(--muted)">${v}</span>
+        </div>
+        <div class="bar-wrap">
+          <div class="bar-bg"><div class="bar-fill" style="width:${Math.round(v/mx*100)}%"></div></div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+  function render(m, c) {
+    const r = m.requests;
+    const p = m.performance;
+
+    // ── KPIs ────────────────────────────────────────────────────────────────
+    document.getElementById('kpi-grid').innerHTML = [
+      { label:'Uptime',        val: m.uptime.formatted,         cls:'kpi-blue',   sub:'hh:mm:ss' },
+      { label:'Total Requests',val: r.total.toLocaleString(),   cls:'kpi-blue',   sub:'since start' },
+      { label:'Successful',    val: r.success.toLocaleString(), cls:'kpi-green',  sub:'2xx / 3xx' },
+      { label:'Errors',        val: r.errors.toLocaleString(),  cls:'kpi-red',    sub:`${r.error_rate_pct}% error rate` },
+      { label:'Avg Response',  val: `${p.avg_response_ms}ms`,   cls:'kpi-purple', sub:'last 500 requests' },
+    ].map(k => `
+      <div class="kpi-card ${k.cls}">
+        <div class="kpi-label">${k.label}</div>
+        <div class="kpi-value">${k.val}</div>
+        <div class="kpi-sub">${k.sub}</div>
+      </div>
+    `).join('');
+
+    // ── Status chart ─────────────────────────────────────────────────────────
+    document.getElementById('status-chart').innerHTML = barChart(r.by_status);
+
+    // ── Method chart ─────────────────────────────────────────────────────────
+    document.getElementById('method-chart').innerHTML = barChart(r.by_method);
+
+    // ── Top routes ────────────────────────────────────────────────────────────
+    const tbody = document.querySelector('#routes-table tbody');
+    tbody.innerHTML = r.top_routes.map(([path, hits]) => `
+      <tr>
+        <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${path}</td>
+        <td><strong>${hits}</strong></td>
+      </tr>
+    `).join('') || '<tr><td colspan="2" style="color:var(--muted);text-align:center;padding:24px">No data yet</td></tr>';
+
+    // ── Operations ────────────────────────────────────────────────────────────
+    const ops = m.operations;
+    document.getElementById('ops-grid').innerHTML = Object.keys(ops).length
+      ? Object.entries(ops).map(([op, cnt]) => `
+          <div class="op-card">
+            <div class="op-name">${op.replace(/_/g,' ')}</div>
+            <div class="op-val">${cnt}</div>
+          </div>
+        `).join('')
+      : '<div style="color:var(--muted);font-size:13px;grid-column:1/-1">No operations recorded yet.</div>';
+
+    // ── Cache ─────────────────────────────────────────────────────────────────
+    document.getElementById('cache-grid').innerHTML = Object.entries(c).map(([name, stats]) => `
+      <div class="cache-card">
+        <div class="cache-name">🗃 ${name.replace(/_/g, ' ')}</div>
+        <div class="cache-stat-row"><span>Active keys</span><strong style="color:var(--green)">${stats.active_keys}</strong></div>
+        <div class="cache-stat-row"><span>Expired keys</span><strong style="color:var(--muted)">${stats.expired_keys}</strong></div>
+        <div class="cache-stat-row"><span>Total stored</span><strong>${stats.total_keys}</strong></div>
+      </div>
+    `).join('');
+
+    // ── Log ───────────────────────────────────────────────────────────────────
+    const logList = document.getElementById('log-list');
+    const recent = [...m.recent_requests].reverse();
+    logList.innerHTML = recent.length ? recent.map(req => {
+      const s = req.status;
+      const cls = s < 400 ? 'ok' : s < 500 ? 'warn' : 'err';
+      return `
+        <div class="log-item ${cls}">
+          <span class="log-method">${req.method}</span>
+          ${statusBadge(req.status)}
+          <span class="log-path">${req.path}</span>
+          <span class="log-dur">${req.duration_ms}ms</span>
+          <span class="log-ts">${req.timestamp}</span>
+        </div>
+      `;
+    }).join('') : '<div style="color:var(--muted);font-size:13px;padding:20px;text-align:center">No requests recorded yet.</div>';
+
+    document.getElementById('last-updated').textContent =
+      'Last updated: ' + new Date().toLocaleTimeString();
+  }
+
+  // ── Load & auto-refresh ────────────────────────────────────────────────────
+  async function loadMetrics() {
+    try {
+      const [mRes, cRes] = await Promise.all([
+        fetch('/metrics/', { headers: { 'Authorization': `Bearer ${getToken()}` } }),
+        fetch('/metrics/cache', { headers: { 'Authorization': `Bearer ${getToken()}` } }),
+      ]);
+      if (mRes.ok && cRes.ok) {
+        render(await mRes.json(), await cRes.json());
+      } else {
+        // Fallback to server-injected data
+        render(SERVER_METRICS, SERVER_CACHE);
+      }
+    } catch {
+      render(SERVER_METRICS, SERVER_CACHE);
+    }
+  }
+
+  function getToken() {
+    return sessionStorage.getItem('admin_token') || '';
+  }
+
+  // Initial render with server data
+  render(SERVER_METRICS, SERVER_CACHE);
+
+  // Auto-refresh every 30 seconds
+  setInterval(loadMetrics, 30000);
+
+  document.getElementById('last-updated').textContent =
+    'Server-rendered at: ' + new Date().toLocaleTimeString();
+</script>
+</body>
+</html>
